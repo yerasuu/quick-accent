@@ -1,43 +1,70 @@
-use iced::{Element, Task, Size, window, Point};
 use iced::alignment::{Horizontal, Vertical};
+use iced::{Element, Point, Size, Task, window};
 
+mod config;
 mod screen;
 
 pub fn main() -> iced::Result {
+    // Load configuration (creates default if not exists)
+    let config = match config::app::AppConfig::load() {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            eprintln!("Failed to load config: {}, using defaults", e);
+            config::app::AppConfig::default()
+        }
+    };
+
     // Detect actual screen dimensions
     let screen_info = screen::ScreenInfo::detect();
 
-    println!("Detected screen size: {}x{}", screen_info.width, screen_info.height);
-    let window_width = (screen_info.width * 0.75) as f32;
-    let window_height = 100.0;
+    if config.screen.debug_screen_detection {
+        println!(
+            "Detected screen size: {}x{}",
+            screen_info.width, screen_info.height
+        );
+    }
 
-    println!("Calculated window size: {}x{}", window_width, window_height);
-    
-    // Position window in the upper-center area where focused windows typically appear
-    // This mimics where OS usually opens new focused windows
-    let x_position = (screen_info.width - window_width) / 2.0; // Center horizontally
-    let y_position = screen_info.height / 4.0; // Upper quarter of screen
+    // Calculate window size and position using config
+    let (window_width, window_height) =
+        config.calculate_window_size(screen_info.width, screen_info.height);
+    let (x_position, y_position) =
+        config.calculate_window_position(screen_info.width, screen_info.height, window_width);
 
-    println!("Calculated window position: ({}, {})", x_position, y_position);
+    if config.screen.debug_screen_detection {
+        println!("Calculated window size: {}x{}", window_width, window_height);
+        println!(
+            "Calculated window position: ({}, {})",
+            x_position, y_position
+        );
+    }
 
-    iced::application(App::default, App::update, App::view)
-        .window(window::Settings {
-            size: Size::new(window_width, window_height),
-            position: window::Position::Specific(Point::new(x_position, y_position)),
-            resizable: false,
-            ..Default::default()
-        })
-        .run()
+    // Clone config for use in closure
+    let config_for_app = config.tool.clone();
+
+    iced::application(
+        move || App::new(config_for_app.clone()),
+        App::update,
+        App::view,
+    )
+    .window(window::Settings {
+        size: Size::new(window_width, window_height),
+        position: window::Position::Specific(Point::new(x_position, y_position)),
+        resizable: false,
+        ..Default::default()
+    })
+    .run()
 }
 
-struct App;
+struct App {
+    config: config::tool::ToolConfig,
+}
 
 #[derive(Debug, Clone)]
 enum Message {}
 
 impl App {
-    fn new() -> Self {
-        App
+    fn new(config: config::tool::ToolConfig) -> Self {
+        App { config }
     }
 
     fn update(&mut self, _message: Message) -> Task<Message> {
@@ -45,7 +72,8 @@ impl App {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        // Empty view - just background
+        // Display the configured text
+        println!("ToolConfig: {:?}", self.config);
         iced::widget::container(iced::widget::text("some text"))
             .align_x(Horizontal::Center)
             .align_y(Vertical::Center)
@@ -57,6 +85,13 @@ impl App {
 
 impl Default for App {
     fn default() -> Self {
-        Self::new()
+        let config = match config::app::AppConfig::load() {
+            Ok(cfg) => cfg,
+            Err(e) => {
+                eprintln!("Failed to load config: {}, using defaults", e);
+                config::app::AppConfig::default()
+            }
+        };
+        Self::new(config.tool)
     }
 }
